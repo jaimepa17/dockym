@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────────────────
+#  Dockym — Publish to PyPI
+#  Triggers:
+#    - Release published on GitHub
+#    - Manual dispatch (workflow_dispatch)
+#
+#  Prerequisites:
+#    1. Create a PyPI API token at https://pypi.org/manage/account/token/
+#    2. Add it as a GitHub secret named PYPI_API_TOKEN
+# ──────────────────────────────────────────────────────
+
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., 0.2.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: pypi-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  publish:
+    name: Build & Publish to PyPI
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Sync version from tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          python3 .github/scripts/sync-version.py "$VERSION"
+
+      - name: Sync version from manual input
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python3 .github/scripts/sync-version.py "${{ github.event.inputs.version }}"
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true

@@ -1,0 +1,164 @@
+# ──────────────────────────────────────────────────────
+#  Dockym — Build & Release (PyInstaller standalone)
+#  Triggers:
+#    - push on master (build only, no release)
+#    - tag v* (build + create GitHub Release)
+# ──────────────────────────────────────────────────────
+
+name: Build & Release
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_NAME: Dockym
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ─── Build ────────────────────────────────────────
+  build:
+    name: "Build (${{ matrix.os }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        include:
+          - os: ubuntu-24.04
+            artifact_name: dockym-linux-x86_64
+            spec_platform: linux
+          - os: macos-14
+            artifact_name: dockym-macos-arm64
+            spec_platform: darwin
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system deps (Linux)
+        if: matrix.spec_platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxcb-xinerama0 libxcb-cursor0 libegl1-mesa libgl1-mesa-glx
+          # UPX for smaller binary
+          sudo apt-get install -y -qq upx
+
+      - name: Install system deps (macOS)
+        if: matrix.spec_platform == 'darwin'
+        run: |
+          brew install upx 2>/dev/null || true
+
+      - name: Install project deps
+        run: uv sync --dev --frozen
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller --noconfirm pyinstaller.spec
+
+      - name: Prepare artifact (Linux)
+        if: matrix.spec_platform == 'linux'
+        run: |
+          mkdir -p dist/artifact
+          cp -r dist/$APP_NAME dist/artifact/
+          # Create a tarball
+          cd dist
+          tar czf artifact.tar.gz $APP_NAME
+          mv artifact.tar.gz ../
+
+      - name: Prepare artifact (macOS)
+        if: matrix.spec_platform == 'darwin'
+        run: |
+          mkdir -p dist/artifact
+          cp -r "dist/$APP_NAME.app" dist/artifact/
+          # Create a zip of the .app bundle
+          cd dist
+          zip -r artifact.zip "$APP_NAME.app"
+          mv artifact.zip ../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            artifact.tar.gz
+            artifact.zip
+            dist/artifact/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─── Release (on tag v*) ─────────────────────────
+  release:
+    name: Create Release
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+
+      - name: Structure artifacts for release
+        run: |
+          mkdir -p _release
+          # Linux
+          if [ -d "_artifacts/dockym-linux-x86_64" ]; then
+            cp _artifacts/dockym-linux-x86_64/artifact.tar.gz _release/dockym-linux-x86_64.tar.gz
+          fi
+          # macOS
+          if [ -d "_artifacts/dockym-macos-arm64" ]; then
+            cp _artifacts/dockym-macos-arm64/artifact.zip _release/dockym-macos-arm64.zip
+          fi
+          ls -la _release/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          NOTES="# Dockym $TAG
+
+          Descarga el binario para tu plataforma:
+
+          | Archivo | Plataforma |
+          |---------|------------|
+          | \`dockym-linux-x86_64.tar.gz\` | Linux (x86_64) |
+          | \`dockym-macos-arm64.zip\` | macOS (Apple Silicon) |
+
+          > **Nota**: Extrae el archivo y ejecuta \`./Dockym\`. En macOS puede requerir \`xattr -cr Dockym.app\` la primera vez.
+
+          ---
+
+          Para instalar desde código fuente: \`pip install dockym\`
+          "
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Dockym ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          files: |
+            _release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: false

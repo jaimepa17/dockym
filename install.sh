@@ -1,245 +1,407 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ──────────────────────────────────────────────
+# ──────────────────────────────────────────────────────
 #  Dockym — Installer
 #  https://github.com/jaimepa17/dockym
-# ──────────────────────────────────────────────
+#
+#  Usage:
+#    curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash
+#    curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash -s -- --binary
+#    curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash -s -- --uninstall
+#    curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash -s -- --pip
+#    curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash -s -- --uv
+#
+#  Flags:
+#    --binary     Force download pre-built binary from latest GitHub Release
+#    --pip        Force install via pip (from PyPI or GitHub)
+#    --uv         Force install via uv tool install
+#    --version    Install a specific version (e.g. --version 0.1.0)
+#    --uninstall  Remove Dockym
+# ──────────────────────────────────────────────────────
 
 REPO="jaimepa17/dockym"
-BRANCH="master"
-GITHUB="https://raw.githubusercontent.com/$REPO/$BRANCH"
 APP_NAME="dockym"
 INSTALL_DIR="${DOCKYM_DIR:-$HOME/.local/share/dockym}"
 BIN_DIR="${DOCKYM_BIN_DIR:-$HOME/.local/bin}"
 
-# ─── Colores ──────────────────────────────────
+# ─── Colores ────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# ─── Helper functions ─────────────────────────
-info()  { echo -e "${BLUE}::${NC} $1"; }
-ok()    { echo -e "${GREEN}✓${NC} $1"; }
-warn()  { echo -e "${YELLOW}⚠${NC} $1"; }
-error() { echo -e "${RED}✗${NC} $1"; }
-header(){ echo -e "\n${BOLD}── $1 ──${NC}\n"; }
+# ─── Helpers ────────────────────────────────────────
+info()    { echo -e "${BLUE}::${NC} $1"; }
+ok()      { echo -e "${GREEN}✓${NC} $1"; }
+warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
+error()   { echo -e "${RED}✗${NC} $1"; }
+header()  { echo -e "\n${BOLD}── $1 ──${NC}\n"; }
+die()     { error "$1"; exit 1; }
 
-# ─── Check: Python version ────────────────────
+ensure_dirs() {
+    mkdir -p "$INSTALL_DIR" "$BIN_DIR"
+}
+
+# ─── Platform detection ─────────────────────────────
+detect_platform() {
+    local arch
+    arch=$(uname -m)
+    case "$(uname -s)" in
+        Linux)
+            if [ "$arch" = "x86_64" ]; then
+                echo "linux-x86_64"
+            else
+                echo "linux-$arch"
+            fi
+            ;;
+        Darwin)
+            if [ "$arch" = "arm64" ]; then
+                echo "macos-arm64"
+            else
+                echo "macos-x86_64"
+            fi
+            ;;
+        *)
+            die "Sistema operativo no soportado: $(uname -s)"
+            ;;
+    esac
+}
+
+# ─── Check commands availability ────────────────────
+require_cmd() {
+    if ! command -v "$1" &>/dev/null; then
+        die "Se requiere '$1' pero no está instalado."
+    fi
+}
+
+# ─── Binary install (from GitHub Release) ──────────
+install_binary() {
+    header "Descargando binario pre-compilado"
+    ensure_dirs
+
+    local platform version ext url archive extract_dir
+    platform=$(detect_platform)
+    version="${INPUT_VERSION:-latest}"
+
+    require_cmd curl
+
+    if [ "$version" = "latest" ]; then
+        info "Obteniendo última versión..."
+        version=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+            | grep '"tag_name":' \
+            | sed -E 's/.*"v([^"]+)".*/\1/')
+        if [ -z "$version" ]; then
+            warn "No se pudo determinar la última versión. ¿Hay algún release publicado?"
+            warn "Usando la versión desde código fuente como fallback..."
+            return 1
+        fi
+        ok "Última versión: v$version"
+    fi
+
+    # Map platform to artifact file
+    case "$platform" in
+        linux-x86_64) artifact="dockym-linux-x86_64.tar.gz" ;;
+        macos-arm64)  artifact="dockym-macos-arm64.zip" ;;
+        macos-x86_64) artifact="dockym-macos-x86_64.zip" ;;
+        *)            die "No hay binario pre-compilado para $platform" ;;
+    esac
+
+    url="https://github.com/$REPO/releases/download/v$version/$artifact"
+    info "Descargando: $url"
+
+    archive="$INSTALL_DIR/$artifact"
+    curl -fsSL "$url" -o "$archive" || {
+        warn "No se pudo descargar el binario para v$version ($platform)."
+        warn "Probando instalación desde código fuente..."
+        return 1
+    }
+
+    ok "Descargado ($(du -h "$archive" | cut -f1))"
+
+    case "$artifact" in
+        *.tar.gz)
+            tar xzf "$archive" -C "$INSTALL_DIR"
+            extract_dir=$(tar tzf "$archive" | head -1 | cut -d/ -f1)
+            ;;
+        *.zip)
+            require_cmd unzip
+            unzip -qo "$archive" -d "$INSTALL_DIR"
+            # Buscar el .app o ejecutable
+            extract_dir=$(unzip -l "$archive" 2>/dev/null | head -4 | tail -1 | awk '{print $NF}' | cut -d/ -f1)
+            ;;
+    esac
+
+    # Create launcher symlink
+    if [ -d "$INSTALL_DIR/$extract_dir/$APP_NAME.app" ]; then
+        # macOS .app bundle
+        ln -sf "$INSTALL_DIR/$extract_dir/$APP_NAME.app" "$INSTALL_DIR/$APP_NAME.app"
+        # Create a CLI launcher that opens the app
+        cat > "$BIN_DIR/$APP_NAME" << LAUNCHER_EOF
+#!/usr/bin/env bash
+open "$INSTALL_DIR/$APP_NAME.app"
+LAUNCHER_EOF
+        chmod +x "$BIN_DIR/$APP_NAME"
+        ok "macOS .app bundle instalado en $INSTALL_DIR/$APP_NAME.app"
+    elif [ -f "$INSTALL_DIR/$extract_dir/$APP_NAME" ]; then
+        # Linux executable
+        ln -sf "$INSTALL_DIR/$extract_dir/$APP_NAME" "$BIN_DIR/$APP_NAME"
+        chmod +x "$BIN_DIR/$APP_NAME"
+    fi
+
+    rm -f "$archive"
+    return 0
+}
+
+# ─── Python version check ──────────────────────────
 check_python() {
     header "Verificando Python"
 
-    # Try python3 first, then python
-    if command -v python3 &>/dev/null; then
-        PYTHON=python3
-    elif command -v python &>/dev/null; then
-        PYTHON=python
-    else
+    PYTHON=""
+    for cmd in python3 python; do
+        if command -v "$cmd" &>/dev/null; then
+            PYTHON="$cmd"
+            break
+        fi
+    done
+
+    if [ -z "$PYTHON" ]; then
         error "Python no está instalado."
         echo "  Instálalo desde: https://www.python.org/downloads/"
         echo "  O con tu gestor de paquetes:"
-        echo "    Arch:  sudo pacman -S python"
-        echo "    Debian/Ubuntu: sudo apt install python3 python3-pip python3-venv"
-        echo "    macOS: brew install python@3.11"
-        exit 1
+        echo "    Arch Linux:       sudo pacman -S python python-pip"
+        echo "    Debian/Ubuntu:    sudo apt install python3 python3-pip python3-venv"
+        echo "    Fedora:           sudo dnf install python3 python3-pip"
+        echo "    macOS (Homebrew): brew install python@3.11"
+        die "Python ≥ 3.11 es requerido"
     fi
 
     version=$($PYTHON --version 2>&1 | grep -oP '\d+\.\d+')
-    major=$(echo "$version" | cut -d. -f1)
-    minor=$(echo "$version" | cut -d. -f2)
+    major=${version%.*}
+    minor=${version#*.}
 
     if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 11 ]; }; then
-        error "Se requiere Python ≥ 3.11 (tienes $($PYTHON --version 2>&1))"
-        exit 1
+        die "Se requiere Python ≥ 3.11 (tienes: $($PYTHON --version 2>&1))"
     fi
 
     ok "Python $($PYTHON --version 2>&1)"
 }
 
-# ─── Check: package managers ──────────────────
-check_pkg_managers() {
-    header "Gestores de paquetes"
+# ─── Install via uv ────────────────────────────────
+install_uv() {
+    header "Instalando con uv"
 
-    HAS_UV=false
-    HAS_PIP=false
+    ensure_dirs
+    require_cmd uv
 
-    if command -v uv &>/dev/null; then
-        HAS_UV=true
-        ok "uv detectado"
-    else
-        warn "uv no encontrado — se usará pip (más lento)"
+    info "Ejecutando: uv tool install dockym..."
+    if uv tool install --reinstall "git+https://github.com/$REPO.git" 2>&1 | sed 's/^/  /'; then
+        ok "Instalado con uv correctamente"
+        return 0
     fi
 
-    if $PYTHON -m pip --version &>/dev/null; then
-        HAS_PIP=true
-        ok "pip detectado"
-    fi
-
-    if [ "$HAS_UV" = false ] && [ "$HAS_PIP" = false ]; then
-        error "No se encontró uv ni pip."
-        echo "  Instala pip: https://pip.pypa.io/en/stable/installation/"
-        exit 1
-    fi
+    warn "Falló la instalación con uv"
+    return 1
 }
 
-# ─── Install dependencies ─────────────────────
-install_deps() {
-    header "Instalando dependencias"
+# ─── Install via pip ───────────────────────────────
+install_pip() {
+    header "Instalando con pip"
 
-    # Ensure target dir exists
-    mkdir -p "$INSTALL_DIR"
-    mkdir -p "$BIN_DIR"
+    ensure_dirs
 
-    if [ "$HAS_UV" = true ]; then
-        info "Usando uv..."
-        uv tool install --reinstall "git+https://github.com/$REPO.git" 2>&1 | sed 's/^/  /'
+    require_cmd "$PYTHON"
 
-        # uv tool install creates the entry point automatically
-        ok "Dependencias instaladas con uv"
+    # Try from PyPI first, fallback to GitHub
+    local source="dockym"
+    info "Probando instalación desde PyPI..."
+    if $PYTHON -m pip install --quiet --upgrade "$source" 2>/dev/null; then
+        ok "Instalado desde PyPI"
     else
-        info "Usando pip..."
-
-        # Create a virtualenv in INSTALL_DIR for isolation
-        VENV_DIR="$INSTALL_DIR/venv"
-        if [ ! -d "$VENV_DIR" ]; then
-            info "Creando entorno virtual..."
-            $PYTHON -m venv "$VENV_DIR"
-        fi
-
-        info "Instalando desde GitHub..."
-        "$VENV_DIR/bin/pip" install --quiet --upgrade "git+https://github.com/$REPO.git" 2>&1 | sed 's/^/  /'
-
-        # Create launcher script
-        LAUNCHER="$BIN_DIR/$APP_NAME"
-        cat > "$LAUNCHER" << LAUNCHER_EOF
+        info "Instalando directamente desde GitHub..."
+        source="git+https://github.com/$REPO.git"
+        $PYTHON -m pip install --quiet --upgrade "$source" 2>&1 | sed 's/^/  /' || {
+            # Last resort: create venv
+            warn "Instalación global falló. Probando con entorno virtual..."
+            local venv_dir="$INSTALL_DIR/venv"
+            $PYTHON -m venv "$venv_dir"
+            "$venv_dir/bin/pip" install --quiet --upgrade "git+https://github.com/$REPO.git"
+            cat > "$BIN_DIR/$APP_NAME" << LAUNCHER_EOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/$APP_NAME" "\$@"
+exec "$venv_dir/bin/$APP_NAME" "\$@"
 LAUNCHER_EOF
-        chmod +x "$LAUNCHER"
-
-        ok "Dependencias instaladas con pip"
+            chmod +x "$BIN_DIR/$APP_NAME"
+        }
     fi
+
+    ok "Instalado con pip correctamente"
 }
 
-# ─── Verify installation ──────────────────────
+# ─── Verify installation ──────────────────────────
 verify_install() {
     header "Verificando instalación"
 
     if command -v "$APP_NAME" &>/dev/null; then
-        ok "$APP_NAME se encuentra en PATH"
+        ok "✅ $APP_NAME está disponible en el PATH"
+        echo ""
+        echo -e "  ${BOLD}Ejecuta:${NC}  ${CYAN}$APP_NAME${NC}"
     elif [ -x "$BIN_DIR/$APP_NAME" ]; then
-        warn "$APP_NAME instalado en $BIN_DIR (puede que no esté en PATH)"
-        echo "  Agrega esto a tu ~/.bashrc o ~/.zshrc:"
+        warn "⚠️  $APP_NAME está en $BIN_DIR pero no está en el PATH"
+        echo ""
+        echo -e "  Para usarlo, agrega a tu ${BOLD}~/.bashrc${NC} o ${BOLD}~/.zshrc${NC}:"
         echo -e "  ${CYAN}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+        echo ""
+        echo -e "  Después: ${CYAN}source ~/.bashrc && $APP_NAME${NC}"
+    elif [ -d "$INSTALL_DIR/$APP_NAME.app" ]; then
+        ok "✅ $APP_NAME.app instalado en $INSTALL_DIR"
+        echo ""
+        echo -e "  Ejecuta: ${CYAN}open $INSTALL_DIR/$APP_NAME.app${NC}"
     else
-        warn "No se encontró $APP_NAME en el PATH"
-        echo "  Busca el ejecutable en: $BIN_DIR/"
-        echo "  O ejecútalo directamente con: $PYTHON -m dockym"
+        warn "No se pudo verificar la instalación automáticamente."
+        echo "  Busca el ejecutable en: $INSTALL_DIR/"
+        echo "  O ejecuta: $PYTHON -m dockym"
     fi
 }
 
-# ─── Desktop entry (Linux) ────────────────────
+# ─── Desktop entry (Linux) ─────────────────────────
 setup_desktop_entry() {
-    header "Acceso directo"
+    [ "$(uname)" != "Linux" ] && return
 
-    if [ "$(uname)" != "Linux" ]; then
-        info "Se omite entrada de escritorio (solo Linux)"
-        return
-    fi
+    header "Acceso directo (Linux)"
 
-    # Locate the icon — we need to find where dockym was installed
-    if [ "$HAS_UV" = true ]; then
-        # uv stores tools in ~/.local/share/uv/tools/
-        MODULE_DIR=$(uv tool show dockym 2>/dev/null | grep -oP '(?<=installed at ).*' || true)
-    fi
+    local app_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    local desktop_file="$app_dir/dockym.desktop"
+    local exec_path
 
-    # If we can't find it, download the icon from GitHub
-    ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
-    ICON_PATH="$ICON_DIR/dockym.png"
+    exec_path=$(command -v "$APP_NAME" 2>/dev/null || echo "$BIN_DIR/$APP_NAME")
 
-    mkdir -p "$ICON_DIR"
+    mkdir -p "$app_dir"
 
-    # Try to generate an icon from the app (it renders one), or download a placeholder
-    # For now just create an entry without icon reference
-
-    APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-    DESKTOP_FILE="$APP_DIR/dockym.desktop"
-
-    mkdir -p "$APP_DIR"
-
-    # Find the actual executable path for the desktop entry
-    EXEC_PATH=$(command -v "$APP_NAME" 2>/dev/null || echo "$BIN_DIR/$APP_NAME")
-
-    cat > "$DESKTOP_FILE" << DESKTOP_EOF
+    cat > "$desktop_file" << DESKTOP_EOF
 [Desktop Entry]
+Version=1.0
 Name=Dockym
 Comment=Gestor visual de servicios Docker Compose
-Exec=$EXEC_PATH
+Exec=$exec_path
 Icon=dockym
 Terminal=false
 Type=Application
 Categories=Development;System;Utility;
 Keywords=docker;compose;containers;devops;
+StartupWMClass=dockym
 DESKTOP_EOF
 
-    ok "Entrada de escritorio creada: $DESKTOP_FILE"
-    echo "  Aparecerá en tu menú de aplicaciones como 'Dockym'"
+    # Generate a simple PNG icon (48x48, solid color with letter D)
+    if command -v "$PYTHON" &>/dev/null; then
+        local icon_dir="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/48x48/apps"
+        mkdir -p "$icon_dir"
+        "$PYTHON" -c "
+import struct, zlib
 
-    # Try to install icon (download a simple one from GitHub)
-    if command -v python3 &>/dev/null; then
-        python3 -c "
-import urllib.request, os
-try:
-    # Just use a simple SVG placeholder — the app renders its own icon at runtime
-    pass
-except:
-    pass
+def create_png(width, height, color, filepath):
+    def chunk(chunk_type, data):
+        c = chunk_type + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+
+    header = b'\\x89PNG\\r\\n\\x1a\\n'
+    ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+    raw = b''
+    for y in range(height):
+        raw += b'\\x00'
+        for x in range(width):
+            raw += bytes(color)
+    idat = chunk(b'IDAT', zlib.compress(raw))
+    iend = chunk(b'IEND', b'')
+    with open(filepath, 'wb') as f:
+        f.write(header + ihdr + idat + iend)
+
+icon_path = '$icon_dir/dockym.png'
+if not __import__('os').path.exists(icon_path):
+    create_png(48, 48, (38, 132, 255), icon_path)
+    print(f'  Icono creado: {icon_path}')
 " 2>/dev/null || true
     fi
+
+    ok "Entrada de escritorio creada: $desktop_file"
 }
 
-# ─── Print summary ────────────────────────────
+# ─── Summary ────────────────────────────────────────
 print_summary() {
     echo ""
     echo -e "${GREEN}┌────────────────────────────────────────────┐${NC}"
     echo -e "${GREEN}│${NC}  ✅  Dockym se instaló correctamente       ${GREEN}│${NC}"
     echo -e "${GREEN}└────────────────────────────────────────────┘${NC}"
     echo ""
-    echo -e "  Ejecútalo con:    ${CYAN}${BOLD}$APP_NAME${NC}"
-    echo -e "  Desde código:     ${CYAN}${BOLD}python -m dockym${NC}"
+    echo -e "  ${BOLD}Ejecutar:${NC}  ${CYAN}$APP_NAME${NC}"
     echo ""
     echo -e "  📖  Documentación: https://github.com/$REPO"
     echo -e "  🐛  Reportar bugs: https://github.com/$REPO/issues"
     echo ""
 }
 
-# ─── Uninstall function (hidden flag) ─────────
+# ─── Uninstall ──────────────────────────────────────
 uninstall() {
     header "Desinstalando Dockym"
 
-    if [ "$HAS_UV" = true ]; then
+    # Remove uv tool
+    if command -v uv &>/dev/null; then
         uv tool uninstall dockym 2>/dev/null || true
     fi
 
+    # Remove install dir
     rm -rf "$INSTALL_DIR"
 
     # Remove launcher
-    LAUNCHER="$BIN_DIR/$APP_NAME"
-    rm -f "$LAUNCHER"
+    rm -f "$BIN_DIR/$APP_NAME"
 
     # Remove desktop entry
-    DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/dockym.desktop"
-    rm -f "$DESKTOP_FILE"
+    rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/applications/dockym.desktop"
 
-    ok "Dockym ha sido desinstalado"
+    # Remove icon
+    rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/48x48/apps/dockym.png"
+
+    ok "Dockym ha sido desinstalado completamente"
 }
 
-# ─── Main ──────────────────────────────────────
+# ─── Flags ─────────────────────────────────────────
+FORCE_BINARY=false
+FORCE_UV=false
+FORCE_PIP=false
+INPUT_VERSION=""
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --binary)    FORCE_BINARY=true ;;
+            --uv)        FORCE_UV=true ;;
+            --pip)       FORCE_PIP=true ;;
+            --version)   shift; INPUT_VERSION="$1" ;;
+            --uninstall) uninstall; exit 0 ;;
+            uninstall)   uninstall; exit 0 ;;
+            -h|--help)
+                echo "Uso: curl -fsSL ... | bash -s -- [flags]"
+                echo ""
+                echo "Flags:"
+                echo "  --binary      Descargar binario pre-compilado (GitHub Release)"
+                echo "  --uv          Instalar con uv tool install"
+                echo "  --pip         Instalar con pip"
+                echo "  --version X   Especificar versión (ej: 0.1.0)"
+                echo "  --uninstall   Desinstalar Dockym"
+                exit 0
+                ;;
+            *) warn "Flag desconocido: $1. Continuando..." ;;
+        esac
+        shift
+    done
+}
+
+# ─── Main ───────────────────────────────────────────
 main() {
+    parse_args "$@"
+
     echo ""
     echo -e "${BOLD}${CYAN}  ╭──────────────────────────────────╮${NC}"
     echo -e "${BOLD}${CYAN}  │         🐳  Dockym               │${NC}"
@@ -247,15 +409,53 @@ main() {
     echo -e "${BOLD}${CYAN}  ╰──────────────────────────────────╯${NC}"
     echo ""
 
-    # Handle uninstall
-    if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "uninstall" ]; then
-        uninstall
+    # ── Binary mode (fast path) ──────────────
+    if [ "$FORCE_BINARY" = true ]; then
+        install_binary && { verify_install; setup_desktop_entry; print_summary; exit 0; }
+        die "Falló la descarga del binario. Usa --uv o --pip como alternativa."
+    fi
+
+    # ── Single method requested ──────────────
+    if [ "$FORCE_UV" = true ]; then
+        check_python
+        install_uv || die "Falló la instalación con uv"
+        verify_install
+        setup_desktop_entry
+        print_summary
         exit 0
     fi
 
+    if [ "$FORCE_PIP" = true ]; then
+        check_python
+        install_pip
+        verify_install
+        setup_desktop_entry
+        print_summary
+        exit 0
+    fi
+
+    # ── Auto mode: binary → uv → pip ─────────
+    # First try: pre-built binary (fastest)
+    if install_binary; then
+        verify_install
+        setup_desktop_entry
+        print_summary
+        exit 0
+    fi
+
+    # Second try: uv
     check_python
-    check_pkg_managers
-    install_deps
+    if command -v uv &>/dev/null; then
+        if install_uv; then
+            verify_install
+            setup_desktop_entry
+            print_summary
+            exit 0
+        fi
+    fi
+
+    # Third try: pip
+    install_pip
     verify_install
     setup_desktop_entry
     print_summary

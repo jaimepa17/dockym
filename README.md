@@ -1,6 +1,76 @@
-# Dockym 🐳
+<div align="center">
 
-**Gestor visual de servicios Docker Compose** — una aplicación de escritorio nativa construida con PySide6 que te permite administrar tus contenedores Docker y proyectos Compose sin tocar la terminal.
+# 🐳 Dockym
+
+**Gestor visual de servicios Docker Compose**
+
+Una aplicación de escritorio nativa (PySide6) para administrar tus contenedores Docker y proyectos Compose sin tocar la terminal.
+
+[![Build](https://github.com/jaimepa17/dockym/actions/workflows/build.yml/badge.svg)](https://github.com/jaimepa17/dockym/actions/workflows/build.yml)
+[![PyPI Publish](https://github.com/jaimepa17/dockym/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/jaimepa17/dockym/actions/workflows/publish-pypi.yml)
+[![PyPI version](https://img.shields.io/pypi/v/dockym?color=blue)](https://pypi.org/project/dockym/)
+[![Python version](https://img.shields.io/pypi/pyversions/dockym)](https://pypi.org/project/dockym/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/jaimepa17/dockym)](https://github.com/jaimepa17/dockym/releases)
+
+</div>
+
+---
+
+## ✨ Instalación
+
+### Opción 1 — Una línea (recomendada)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaimepa17/dockym/main/install.sh | bash
+```
+
+El script detecta automáticamente tu plataforma y elige el método más rápido disponible:
+
+| Prioridad | Método | Descripción |
+|-----------|--------|-------------|
+| 🥇 | **Binario** | Descarga el ejecutable pre-compilado (GitHub Release) — sin dependencias |
+| 🥈 | **uv** | `uv tool install dockym` — más rápido |
+| 🥉 | **pip** | `pip install dockym` — universal |
+
+> **Flags útiles**: `--binary` (forzar binario), `--uv` (forzar uv), `--pip` (forzar pip), `--version 0.1.0` (versión específica), `--uninstall` (desinstalar).
+
+### Opción 2 — pip (desde PyPI)
+
+```bash
+pip install dockym
+dockym
+```
+
+### Opción 3 — uv
+
+```bash
+uv tool install dockym
+dockym
+```
+
+### Opción 4 — Binario standalone
+
+Descarga el binario desde [GitHub Releases](https://github.com/jaimepa17/dockym/releases):
+
+```bash
+# Linux
+tar xzf dockym-linux-x86_64.tar.gz
+./Dockym
+
+# macOS
+unzip dockym-macos-arm64.zip
+open Dockym.app
+```
+
+### Opción 5 — Desde código fuente
+
+```bash
+git clone https://github.com/jaimepa17/dockym.git
+cd dockym
+uv sync
+uv run dockym
+```
 
 ---
 
@@ -92,50 +162,6 @@
 - **Worker pool** con `QThreadPool` para operaciones en segundo plano
 - **Iconos 100% vectoriales** renderizados con QPainter — sin assets externos
 - **Config atómica** con temp file + `os.replace()`
-
----
-
-## Instalación
-
-### Requisitos
-
-- **Python** 3.11 o superior
-- **Docker** corriendo con `docker compose` disponible
-- Acceso al socket de Docker (estándar: `/var/run/docker.sock`)
-
-### Desde el código fuente
-
-```bash
-# Clonar
-git clone https://github.com/jaimepa17/dockym.git
-cd dockym
-
-# Instalar dependencias (recomendado con uv)
-uv sync
-
-# Ejecutar
-uv run dockym
-```
-
-O con pip:
-
-```bash
-pip install -e .
-dockym
-```
-
-### Como binario standalone (PyInstaller)
-
-```bash
-# Instalar dependencias de build
-uv sync --dev
-
-# Build
-pyinstaller pyinstaller.spec
-
-# El ejecutable estará en dist/Dockym
-./dist/Dockym
-```
 
 ---
 

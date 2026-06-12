@@ -116,12 +116,14 @@ class ServiceTree(QTreeWidget):
         self.setColumnWidth(self.COL_IMAGE, 280)
         self.setColumnWidth(self.COL_STATUS, 130)
 
-        # Track hovered and selected rows independently. The overlay shows
-        # the selected row if any, else the hovered row. Mouse leave only
-        # clears the hover — the selection survives.
+        # Track hovered and selected rows independently. The row background
+        # is painted by _RowHighlightDelegate (per cell) BEFORE the cell
+        # contents, so the highlight spans the full row but the text and
+        # icons stay visible on top.
         self._hovered_row: int | None = None
         self._selected_row: int | None = None
-        self._row_overlay = _RowHighlightOverlay(self.viewport())
+        self._row_delegate = _RowHighlightDelegate(self)
+        self.setItemDelegate(self._row_delegate)
         self.viewport().installEventFilter(self)
         self.setMouseTracking(True)
 
@@ -136,24 +138,22 @@ class ServiceTree(QTreeWidget):
         self.itemSelectionChanged.connect(self._on_selection_changed)
 
     def eventFilter(self, obj, event):
-        """Track the hovered row; updates the overlay's row state."""
+        """Track the hovered row; updates the delegate state and repaints."""
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
         if event.type() == QEvent.Type.MouseMove:
             row = self._flat_row_at(event.pos())
             if row != self._hovered_row:
                 self._hovered_row = row
-                self._refresh_overlay()
+                self._schedule_repaint()
         elif event.type() == QEvent.Type.Leave:
             if self._hovered_row is not None:
                 self._hovered_row = None
-                self._refresh_overlay()
+                self._schedule_repaint()
         elif event.type() == QEvent.Type.MouseButtonPress:
-            # Pressed: hide hover — selection change (or lack of one) will
-            # take over via selectionChanged.
             if self._hovered_row is not None:
                 self._hovered_row = None
-                self._refresh_overlay()
+                self._schedule_repaint()
         return super().eventFilter(obj, event)
 
     def _flat_row_at(self, viewport_pos) -> int | None:
@@ -180,40 +180,20 @@ class ServiceTree(QTreeWidget):
 
     def selectionChanged(self, selected, deselected):
         super().selectionChanged(selected, deselected)
-        if self._row_overlay is None:
-            return
         self._selected_row = None
         for item in self.selectedItems():
             payload = item.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
             if payload and payload[0] == "service":
                 self._selected_row = self._flat_row_of(item)
                 break
-        self._refresh_overlay()
+        # The delegate reads _hovered_row / _selected_row at paint time, so
+        # any redraw will pick up the new state. Force a repaint of the
+        # relevant rows so the change is visible without a mouse move.
+        self._schedule_repaint()
 
-    def _refresh_overlay(self) -> None:
-        """Show selection (preferred) or hover; hide if neither."""
-        if self._selected_row is not None:
-            self._row_overlay.set_row(self._selected_row, True)
-        elif self._hovered_row is not None:
-            self._row_overlay.set_row(self._hovered_row, False)
-        else:
-            self._row_overlay.set_row(None, False)
-
-    def _ensure_overlay_position(self) -> None:
-        """Reposition the overlay widget to cover the active row's geometry."""
-        if self._row_overlay._row is None:
-            self._row_overlay.hide()
-            return
-        rect = self._row_rect_for(self._row_overlay._row)
-        if rect is None or rect.height() <= 0:
-            self._row_overlay.hide()
-            return
-        self._row_overlay.setGeometry(rect)
-        self._row_overlay.show()
-        self._row_overlay.raise_()
-        # Force a paint so the hover/selection state is reflected
-        # immediately even if the rest of the viewport doesn't redraw.
-        self._row_overlay.update()
+    def _schedule_repaint(self) -> None:
+        """Trigger a repaint of the viewport so the delegate repaints."""
+        self.viewport().update()
 
     def set_palette(self, colors: dict) -> None:
         """Refresh the highlight colours from the active theme tokens."""
@@ -496,56 +476,76 @@ class ServiceTable(QWidget):
                     break
 
 
-class _RowHighlightOverlay(QWidget):
-    """Transparent overlay painted on top of a ServiceTree's viewport.
+class _RowHighlightDelegate(QStyledItemDelegate):
+    """Paints a single rounded-rect highlight that spans the entire row.
 
-    Lives as a child of the viewport so the WM can't intervene in its
-    positioning. The tree tells it which row to highlight via set_row().
+    Qt's per-cell painting would otherwise show a separate pill behind each
+    cell. This delegate inspects the current cell's row, computes the row's
+    full visual rect across all visible columns, and paints the highlight
+    BEFORE delegating to the default cell painter — so the cell's own text
+    and icon stay on top.
     """
 
-    def __init__(self, parent_viewport):
-        super().__init__(parent_viewport)
-        self._tree = parent_viewport.parent()
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.hide()
-        self._row: int | None = None
-        self._is_selected: bool = False
+    def __init__(self, tree: "ServiceTree"):
+        super().__init__(tree)
+        self._tree = tree
 
-    def set_row(self, row: int | None, is_selected: bool) -> None:
-        if row is None:
-            self._row = None
-            self.hide()
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        # Resolve the item first; QModelIndex.data() takes only a role
+        # (the column is fixed in the index itself).
+        item = self._tree.itemFromIndex(index)
+        if item is None:
+            super().paint(painter, option, index)
             return
-        # Reposition only if changed
-        if self._row != row or self._is_selected != is_selected:
-            self._row = row
-            self._is_selected = is_selected
-            self._tree._ensure_overlay_position()
-        else:
-            self._tree._ensure_overlay_position()
+        payload = item.data(self._tree.COL_NAME, Qt.ItemDataRole.UserRole)
+        if not payload or payload[0] != "service":
+            super().paint(painter, option, index)
+            return
+        flat = self._tree._flat_row_of(item)
+        if flat is None:
+            super().paint(painter, option, index)
+            return
 
-    def paintEvent(self, event):
-        if self._row is None:
+        is_selected = flat == self._tree._selected_row
+        is_hovered = flat == self._tree._hovered_row
+        # When something is selected, that wins; otherwise show the hover.
+        if is_selected or is_hovered:
+            self._paint_row_bg(painter, option, item, is_selected)
+
+        super().paint(painter, option, index)
+
+    def _paint_row_bg(
+        self, painter: QPainter, option: QStyleOptionViewItem, item, is_selected: bool
+    ) -> None:
+        visual_rect = self._tree.visualItemRect(item)
+        if visual_rect.isEmpty():
             return
-        # The overlay's geometry = the row's rect in viewport space, so its
-        # local 0,0 is the top-left of the row. Use local coordinates here.
-        row_rect = QRectF(2, 1, self.width() - 4, self.height() - 2)
-        painter = QPainter(self)
+        # Extend to the rightmost visible column edge
+        right = 0
+        for c in range(self._tree.header().count()):
+            vp = self._tree.columnViewportPosition(c)
+            if vp >= 0:
+                right = max(right, vp + self._tree.columnWidth(c))
+        if right == 0:
+            right = self._tree.viewport().width()
+        full_row = QRect(visual_rect.x(), visual_rect.y(),
+                         max(0, right - visual_rect.x()),
+                         visual_rect.height())
+        painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
-        if self._is_selected:
+        if is_selected:
             painter.setBrush(self._tree.SELECTED_OVERLAY)
-            painter.drawRoundedRect(row_rect, 6, 6)
-            bar = QRectF(row_rect.x() + 1, row_rect.y() + 4,
-                         3, row_rect.height() - 8)
+            painter.drawRoundedRect(QRectF(full_row).adjusted(2, 1, -2, -1), 6, 6)
+            bar = QRectF(full_row.x() + 1, full_row.y() + 4,
+                         3, full_row.height() - 8)
             painter.setBrush(self._tree.ACCENT_SELECTED)
             painter.drawRoundedRect(bar, 2, 2)
         else:
             painter.setBrush(self._tree.HOVER_OVERLAY)
-            painter.drawRoundedRect(row_rect, 6, 6)
-            bar = QRectF(row_rect.x() + 1, row_rect.y() + 4,
-                         2, row_rect.height() - 8)
+            painter.drawRoundedRect(QRectF(full_row).adjusted(2, 1, -2, -1), 6, 6)
+            bar = QRectF(full_row.x() + 1, full_row.y() + 4,
+                         2, full_row.height() - 8)
             painter.setBrush(self._tree.ACCENT_HOVER)
             painter.drawRoundedRect(bar, 1, 1)
-        painter.end()
+        painter.restore()

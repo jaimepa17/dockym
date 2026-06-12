@@ -152,6 +152,11 @@ dev = [
     { name = "watchfiles" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "dockym", extra = ["dev"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "docker", specifier = ">=7.0.0" },
@@ -161,6 +166,9 @@ requires-dist = [
     { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=0.21" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "dockym", extras = ["dev"] }]
 
 [[package]]
 name = "idna"
