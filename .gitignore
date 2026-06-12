@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Project skills (local agent instructions — not part of public codebase)
-.opencode/skills/release/
+# AI agent configuration (local only)
+.hermes-agents/
+.opencode/
