@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Project skills (local agent instructions — not part of public codebase)
+.opencode/skills/release/
