@@ -4,7 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).parent
+# PyInstaller does not define __file__ in the spec execution context,
+# so we use the working directory (always the project root in CI).
+PROJECT_ROOT = Path.cwd()
 SRC_DIR = PROJECT_ROOT / "src"
 
 a = Analysis(
