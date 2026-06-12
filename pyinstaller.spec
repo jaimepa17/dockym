@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -8,6 +9,11 @@ from pathlib import Path
 # so we use the working directory (always the project root in CI).
 PROJECT_ROOT = Path.cwd()
 SRC_DIR = PROJECT_ROOT / "src"
+
+# Read version from pyproject.toml so it stays in a single source of truth
+_pyproject = (PROJECT_ROOT / "pyproject.toml").read_text()
+_match = re.search(r'^version = "([^"]+)"', _pyproject, re.MULTILINE)
+APP_VERSION = _match.group(1) if _match else "0.1.0"
 
 a = Analysis(
     [str(SRC_DIR / "dockym" / "__init__.py")],
@@ -84,8 +90,8 @@ if sys.platform == "darwin":
         icon=None,
         bundle_identifier="com.dockym.app",
         info_plist={
-            "CFBundleShortVersionString": "0.1.0",
-            "CFBundleVersion": "0.1.0",
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
             "CFBundleName": "Dockym",
         },
     )
