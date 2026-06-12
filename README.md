@@ -77,22 +77,19 @@ uv run dockym
 ## Capturas
 
 <!-- 
-  🖼️ AGREGAR CAPTURAS AQUÍ
-  =========================
-  Sube las imágenes a la carpeta assets/screenshots/ del repo o usa
-  un servicio como imgur/cloudinary. Ejemplo:
-  
-  ![Ventana principal](./assets/screenshots/main-window.png)
-  
-  Secciones recomendadas para screenshot:
-  1. main-window  — Ventana principal con project tree + action panel
-  2. themes       — Los 4 temas lado a lado (dark, dark_vscode, dark_claude, light)
-  3. palette      — Command palette (Ctrl+F) en acción
-  4. notifications — Toast notifications stack
-  5. logs         — Logs viewer
-  6. templates    — Service templates dialog
-  7. settings     — Settings dialog
-  8. prune        — Docker prune dialog
+  🖼️ Para agregar más capturas:
+  Toma screenshots de la app y guárdalas en assets/screenshots/.
+  Luego agrégalas a la tabla de abajo.
+
+  Sugerencias:
+  - main-window     — Ventana principal con project tree + action panel
+  - command-palette — Command palette (Ctrl+F)
+  - themes          — Tema claro vs oscuro
+  - notifications   — Stack de toasts
+  - logs            — Visor de logs
+  - settings        — Diálogo de configuración
+  - templates       — Diálogo de plantillas de servicios
+  - prune           — Diálogo de Docker prune
 -->
 
 <table>
@@ -102,14 +99,25 @@ uv run dockym
   </tr>
   <tr>
     <td align="center"><em>Ventana principal</em></td>
-    <td align="center"><em>Command palette</em></td>
+    <td align="center"><em>Command palette (Ctrl+F)</em></td>
+  </tr>
+  <tr>
+    <td><img src="./assets/screenshots/appearance-dialog.png" alt="Selector de tema" width="400"></td>
+    <td><img src="./assets/screenshots/settings-dialog.png" alt="Configuración" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Selector de tema</em></td>
+    <td align="center"><em>Configuración</em></td>
+  </tr>
+  <tr>
+    <td><img src="./assets/screenshots/prune-dialog.png" alt="Docker Prune" width="400"></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Docker Prune</em></td>
+    <td></td>
   </tr>
 </table>
-
-<!--
-  Reemplaza las rutas de las imágenes de arriba cuando tengas las capturas.
-  Puedes borrar este comentario y el de arriba cuando tengas las imágenes.
--->
 
 ---
 
