@@ -323,7 +323,7 @@ Las contribuciones son bienvenidas. Por favor:
 
 ## Licencia
 
-MIT © [Jaime Luna](mailto:jaime.paredes@di.unanleon.edu.ni)
+MIT © [Jaime Luna](mailto:jaimeparedes2000@gmail.com)
 
 ---
 

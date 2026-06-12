@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "Jaime Luna", email = "jaime.paredes@di.unanleon.edu.ni" },
+    { name = "Jaime Luna", email = "jaimeparedes2000@gmail.com" },
 ]
 keywords = ["docker", "compose", "desktop", "gui", "pyside6", "containers"]
 classifiers = [
