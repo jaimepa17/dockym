@@ -18,6 +18,7 @@ from PySide6.QtGui import QColor, QBrush, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QLineEdit, QVBoxLayout, QWidget,
     QStyleOptionViewItem, QStyle, QToolButton, QHeaderView,
+    QStyledItemDelegate,
 )
 # Re-export QTreeWidgetItemIterator from QtWidgets (PySide6 6.7+)
 from PySide6.QtWidgets import QTreeWidgetItemIterator
@@ -85,6 +86,7 @@ class ServiceTree(QTreeWidget):
     # Defaults match the dark theme.
     HOVER_OVERLAY = QColor("#1c2128")
     SELECTED_OVERLAY = QColor(31, 111, 235, 36)   # accent @ ~14% alpha
+    HOVER_TEXT = QColor("#e6edf3")
     ACCENT_HOVER = QColor("#58a6ff")
     ACCENT_SELECTED = QColor("#1f6feb")
 
@@ -114,10 +116,11 @@ class ServiceTree(QTreeWidget):
         self.setColumnWidth(self.COL_IMAGE, 280)
         self.setColumnWidth(self.COL_STATUS, 130)
 
-        # Track the row currently under the cursor — the actual highlight
-        # is rendered by a transparent overlay widget that lives inside
-        # the viewport (so the WM doesn't interfere).
+        # Track hovered and selected rows independently. The overlay shows
+        # the selected row if any, else the hovered row. Mouse leave only
+        # clears the hover — the selection survives.
         self._hovered_row: int | None = None
+        self._selected_row: int | None = None
         self._row_overlay = _RowHighlightOverlay(self.viewport())
         self.viewport().installEventFilter(self)
         self.setMouseTracking(True)
@@ -137,29 +140,64 @@ class ServiceTree(QTreeWidget):
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
         if event.type() == QEvent.Type.MouseMove:
-            idx = self.indexAt(event.pos())
-            row = idx.row() if idx.isValid() else None
+            row = self._flat_row_at(event.pos())
             if row != self._hovered_row:
                 self._hovered_row = row
-                self._row_overlay.set_row(row, False)
-        elif event.type() in (QEvent.Type.Leave, QEvent.Type.MouseButtonPress):
+                self._refresh_overlay()
+        elif event.type() == QEvent.Type.Leave:
             if self._hovered_row is not None:
                 self._hovered_row = None
-                self._row_overlay.set_row(None, False)
+                self._refresh_overlay()
+        elif event.type() == QEvent.Type.MouseButtonPress:
+            # Pressed: hide hover — selection change (or lack of one) will
+            # take over via selectionChanged.
+            if self._hovered_row is not None:
+                self._hovered_row = None
+                self._refresh_overlay()
         return super().eventFilter(obj, event)
+
+    def _flat_row_at(self, viewport_pos) -> int | None:
+        """Return the flat service-row index under *viewport_pos*, or None."""
+        item = self.itemAt(viewport_pos)
+        if item is None:
+            return None
+        payload = item.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
+        if not payload or payload[0] != "service":
+            return None
+        return self._flat_row_of(item)
+
+    def _flat_row_of(self, target_item) -> int | None:
+        """Flat 0-based index of *target_item* among all service items."""
+        flat = 0
+        for it in QTreeWidgetItemIterator(self, QTreeWidgetItemIterator.IteratorFlag.All):
+            item = it.value()
+            payload = item.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
+            if payload and payload[0] == "service":
+                if item is target_item:
+                    return flat
+                flat += 1
+        return None
 
     def selectionChanged(self, selected, deselected):
         super().selectionChanged(selected, deselected)
-        if self._row_overlay is not None:
-            sel_row = None
-            for item in self.selectedItems():
-                payload = item.data(0, Qt.ItemDataRole.UserRole)
-                if payload and payload[0] == "service":
-                    idx = self.indexFromItem(item)
-                    if idx.isValid():
-                        sel_row = idx.row()
-                        break
-            self._row_overlay.set_row(sel_row, True)
+        if self._row_overlay is None:
+            return
+        self._selected_row = None
+        for item in self.selectedItems():
+            payload = item.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
+            if payload and payload[0] == "service":
+                self._selected_row = self._flat_row_of(item)
+                break
+        self._refresh_overlay()
+
+    def _refresh_overlay(self) -> None:
+        """Show selection (preferred) or hover; hide if neither."""
+        if self._selected_row is not None:
+            self._row_overlay.set_row(self._selected_row, True)
+        elif self._hovered_row is not None:
+            self._row_overlay.set_row(self._hovered_row, False)
+        else:
+            self._row_overlay.set_row(None, False)
 
     def _ensure_overlay_position(self) -> None:
         """Reposition the overlay widget to cover the active row's geometry."""
@@ -188,18 +226,18 @@ class ServiceTree(QTreeWidget):
         self.viewport().update()
 
     def _row_rect_for(self, row: int) -> QRect | None:
-        """Combine column rectangles across all columns for *row*."""
-        # Find the actual item matching the flat row index
-        flat = -1
+        """Return the full-row rect for the *row*-th service (0-based flat index)."""
+        # Iterate to find the Nth service item, matching _flat_row_of().
         target = None
+        flat = 0
         for it in QTreeWidgetItemIterator(self, QTreeWidgetItemIterator.IteratorFlag.All):
-            it_val = it.value()
-            payload = it_val.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
+            item = it.value()
+            payload = item.data(self.COL_NAME, Qt.ItemDataRole.UserRole)
             if payload and payload[0] == "service":
-                flat += 1
                 if flat == row:
-                    target = it_val
+                    target = item
                     break
+                flat += 1
         if target is None:
             return None
         visual_rect = self.visualItemRect(target)
