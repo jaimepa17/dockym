@@ -1,0 +1,41 @@
+{
+  "bugs_fixed": ["BUG-002", "BUG-003"],
+  "files_modified": [
+    "src/dockym/engine/client.py",
+    "src/dockym/engine/compose.py"
+  ],
+  "BUG-002": {
+    "title": "Docker socket paths fallback",
+    "problem": "Only tried /var/run/docker.sock as fallback",
+    "fix": "Added multiple candidate socket paths with os.path.exists() check",
+    "socket_paths": [
+      "/var/run/docker.sock (standard)",
+      "/var/snap/docker/run/docker.sock (Snap Docker)",
+      "/run/user/$(id -u)/docker.sock (rootless Docker)",
+      "/run/user/$(id -u)/podman/podman.sock (Podman rootless)"
+    ],
+    "implementation": [
+      "Added `import os`",
+      "Added _candidate_socket_urls() helper that expands uid templates and filters by os.path.exists()",
+      "Replaced single fallback attempt with loop over candidate URLs in _create_client()",
+      "DOCKER_HOST env var already handled by docker.from_env() in Attempt 1"
+    ]
+  },
+  "BUG-003": {
+    "title": "Docker Compose V1 fallback",
+    "problem": "Hardcoded 'docker compose' (V2 only), no support for standalone 'docker-compose' (V1)",
+    "fix": "Added detection with caching using shutil.which() and subprocess check",
+    "implementation": [
+      "Added `import shutil` and `import logging`",
+      "Added _compose_cmd cache variable (None = not yet detected)",
+      "Added _detect_compose_command() that tries 'docker compose version' first, falls back to shutil.which('docker-compose')",
+      "Added await_or_skip() helper for synchronous subprocess detection",
+      "Updated _run_compose() to use detected command prefix instead of hardcoded 'docker compose'"
+    ],
+    "detection_priority": [
+      "1. docker compose (V2 plugin - preferred)",
+      "2. docker-compose (V1 standalone - fallback)",
+      "3. defaults to V2 prefix if neither found"
+    ]
+  }
+}

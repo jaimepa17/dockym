@@ -1,0 +1,46 @@
+{
+  "task": "Fix BUG-001, BUG-013 in scanner.py and BUG-004, BUG-005 in events.py",
+  "status": "done",
+  "bugs_fixed": {
+    "BUG-001": {
+      "file": "src/dockym/engine/scanner.py",
+      "description": "Compose project name mismatch — now parses YAML 'name' field with dir_path.name fallback",
+      "changes": [
+        "Added _read_compose_name() to parse top-level 'name' field from compose YAML",
+        "Updated _check_directory() to use _read_compose_name() or fallback to dir_path.name"
+      ]
+    },
+    "BUG-013": {
+      "file": "src/dockym/engine/scanner.py",
+      "description": "_yaml_cache not thread-safe — added threading.Lock",
+      "changes": [
+        "Added 'import threading'",
+        "Added _yaml_lock = threading.Lock()",
+        "Wrapped _cache_get, _cache_put, _evict_oldest_entries, clear_cache with _yaml_lock"
+      ]
+    },
+    "BUG-004": {
+      "file": "src/dockym/engine/events.py",
+      "description": "Thread-safety in DockerEventsWorker — threading.Event + client lock",
+      "changes": [
+        "Added 'import threading'",
+        "Replaced self._running bool with threading.Event",
+        "Added self._client_lock = threading.Lock()",
+        "Protected _client access with _client_lock in run(), stop(), and finally block"
+      ]
+    },
+    "BUG-005": {
+      "file": "src/dockym/engine/events.py",
+      "description": "Signal name typos fixed",
+      "changes": [
+        "event_ocurred -> event_occurred",
+        "error_ocurred -> error_occurred"
+      ]
+    }
+  },
+  "files_modified": [
+    "src/dockym/engine/scanner.py",
+    "src/dockym/engine/events.py"
+  ],
+  "note": "main_window.py references event_ocurred and error_ocurred on lines 275-276 — those need updating to event_occurred/error_occurred to match the renamed signals"
+}

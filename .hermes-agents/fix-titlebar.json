@@ -1,0 +1,31 @@
+{
+  "task": "fix-titlebar",
+  "status": "completed",
+  "summary": "Created custom frameless title bar for dockym replacing native OS window decoration",
+  "files_created": [
+    "src/dockym/ui/title_bar.py"
+  ],
+  "files_modified": [
+    "src/dockym/ui/main_window.py",
+    "src/dockym/ui/theme.py"
+  ],
+  "features": [
+    "Qt.FramelessWindowHint removes native OS window decorations",
+    "Custom title bar with app icon + 'Dockym' title text",
+    "Minimize, maximize/restore, close buttons with hover effects",
+    "Draggable title bar area (mouse drag to move window)",
+    "Window edge resizing with 8px resize handles (all 8 directions)",
+    "Double-click title bar to maximize/restore",
+    "System tray toggle button in title bar",
+    "Docker connection status indicator (events indicator) in title bar",
+    "Running/total service count badge in title bar",
+    "Theme-aware styling for all title bar elements (dark, light, vscode, claude)"
+  ],
+  "notes": [
+    "Header bar simplified: events indicator and count moved from header to title bar",
+    "Header bar retains 'Proyectos · Docker services' context info",
+    "Menu bar remains below title bar",
+    "Edge resize handles work on all 8 edges/corners",
+    "Cursor changes to appropriate resize arrow when hovering edges"
+  ]
+}

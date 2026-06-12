@@ -1,0 +1,27 @@
+[project]
+name = "dockym"
+version = "0.1.0"
+description = "App de escritorio nativa para gestionar servicios Docker"
+readme = "README.md"
+authors = [
+    { name = "Jaime_luna", email = "jaime.paredes@di.unanleon.edu.ni" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pyside6>=6.7",
+    "docker>=7.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+dockym = "dockym:main"
+
+[project.optional-dependencies]
+dev = [
+    "pyinstaller>=6.0",
+    "watchfiles>=0.21",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.20,<0.12.0"]
+build-backend = "uv_build"

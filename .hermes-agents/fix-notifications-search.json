@@ -1,0 +1,47 @@
+{
+  "task": "fix-notifications-search",
+  "status": "completed",
+  "phase": 1,
+  "created": [
+    "src/dockym/ui/notification.py",
+    "src/dockym/ui/command_palette.py"
+  ],
+  "modified": [
+    "src/dockym/ui/main_window.py"
+  ],
+  "features": {
+    "notifications": {
+      "description": "Toast-style notification system with auto-dismiss, stacking, click-to-dismiss",
+      "components": [
+        "NotificationType enum (SUCCESS, ERROR, WARNING, INFO)",
+        "ToastNotification widget with slide-in/out animations, hover pause, custom paint",
+        "NotificationManager with stacking, auto-dismiss, convenience methods"
+      ],
+      "integration": [
+        "Docker connection status → success notification",
+        "Docker events (start/stop/die) → info/warning notifications",
+        "Operation success → success notification",
+        "Operation error → error notification",
+        "Events error → error notification"
+      ]
+    },
+    "command_palette": {
+      "description": "Ctrl+K command palette for global search across services and projects",
+      "components": [
+        "SearchResult data class for search items",
+        "SearchResultModel (QAbstractListModel) with proxy filtering",
+        "SearchItemDelegate for custom rendering with status icons",
+        "CommandPalette dialog with keyboard navigation"
+      ],
+      "features": [
+        "Real-time filtering as user types",
+        "Results show status icons, service names, project context",
+        "Keyboard navigation (up/down arrows, Enter to select, Esc to close)",
+        "Centered on parent window"
+      ]
+    }
+  },
+  "shortcuts_added": {
+    "Ctrl+K": "Open command palette"
+  }
+}

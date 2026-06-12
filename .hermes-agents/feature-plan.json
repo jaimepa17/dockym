@@ -1,0 +1,496 @@
+{
+  "project": "dockym",
+  "version": "0.1.0",
+  "created": "2026-06-11",
+  "research_sources": [
+    "Docker Desktop (docs.docker.com/desktop)",
+    "OrbStack (orbstack.dev)",
+    "Podman Desktop (podman-desktop.io)",
+    "Rancher Desktop (rancherdesktop.io)"
+  ],
+  "current_capabilities": {
+    "container_management": "Compose-only via service table (start/stop/restart/logs/exec per service)",
+    "image_management": "None (images only shown as labels on containers)",
+    "volume_management": "None (only prune via prune dialog)",
+    "network_management": "None (only prune networks)",
+    "resource_monitoring": "container_stats() exists in client.py but not used in UI",
+    "search_filter": "Service-level search bar in ServiceTable (Ctrl+F)",
+    "notifications": "Tray notifications on operation completion",
+    "system_tray": "Basic tray with show/quit actions"
+  },
+  "feature_plan": {
+    "category_1_container_management": {
+      "priority": "HIGH",
+      "title": "Universal Container Management",
+      "description": "View and manage ALL containers, not just compose project containers. Docker Desktop and OrbStack show all containers with full lifecycle control.",
+      "current_gap": "dockym only discovers containers via compose file scanning. Standalone containers (docker run) are invisible.",
+      "inspiration": {
+        "docker_desktop": "Full container list with start/stop/restart/remove/logs/inspect/exec/attach actions. Terminal access per container.",
+        "orbstack": "Containers shown in menu bar, 2-way file sharing, volume file access, container domains.",
+        "podman_desktop": "List, search, inspect, connect, run, stop containers. Play Kubernetes YAML locally.",
+        "rancher_desktop": "Container management with Kubernetes integration."
+      },
+      "features": [
+        {
+          "id": "C1",
+          "title": "All Containers View",
+          "description": "New tab or sidebar section showing ALL running and stopped containers (not just compose-managed). Include container ID, name, image, status, ports, created date.",
+          "implementation": "Add a new view to MainWindow or a tabbed interface. Use docker.containers.list(all=True) from client.py (already exists). Show compose vs standalone distinction.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/main_window.py",
+            "src/dockym/ui/containers_view.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "C2",
+          "title": "Container Lifecycle Actions",
+          "description": "Full CRUD for any container: start, stop, restart, pause, unpause, remove, force remove. Add confirmation dialogs for destructive actions.",
+          "implementation": "Extend client.py with container action methods. Add context menu or action panel for container view.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/engine/client.py",
+            "src/dockym/ui/containers_view.py (NEW)"
+          ]
+        },
+        {
+          "id": "C3",
+          "title": "Container Inspect",
+          "description": "Show full container inspect JSON with formatted view. Docker Desktop provides detailed container info including mount points, network config, environment variables, labels.",
+          "implementation": "New InspectDialog showing JSON output from client.containers.get(c).attrs with syntax highlighting.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/inspect_dialog.py (NEW)"
+          ]
+        },
+        {
+          "id": "C4",
+          "title": "Container Terminal (Attach/Exec)",
+          "description": "Interactive terminal access to any container. OrbStack and Docker Desktop both provide this. Currently dockym only has basic exec.",
+          "implementation": "Enhance ExecDialog with interactive PTY mode, or add a terminal emulator widget (QTerminalWidget from PySide6).",
+          "estimated_effort": "HIGH",
+          "files_affected": [
+            "src/dockym/ui/exec_dialog.py",
+            "src/dockym/ui/terminal_widget.py (NEW)"
+          ]
+        },
+        {
+          "id": "C5",
+          "title": "Container Top (Process List)",
+          "description": "Show running processes inside a container (docker top). Useful for debugging without exec.",
+          "implementation": "New tab in container detail view using client.containers.get(c).top().",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/engine/client.py",
+            "src/dockym/ui/container_detail.py (NEW)"
+          ]
+        }
+      ]
+    },
+    "category_2_image_management": {
+      "priority": "HIGH",
+      "title": "Image Management",
+      "description": "Full image lifecycle management. Docker Desktop provides image list, pull, push, build, remove, tag, and history features.",
+      "current_gap": "dockym has ZERO image management. Images are only shown as text labels in the service table.",
+      "inspiration": {
+        "docker_desktop": "Image list with size, tags, created date. Pull from registries, build from Dockerfile, remove unused images. Docker Scout security scanning.",
+        "orbstack": "Image file access, volume file access, build images quickly.",
+        "podman_desktop": "Pull/push images, manage registries, build from Containerfile/Dockerfile.",
+        "rancher_desktop": "Built-in container images, pull from registries."
+      },
+      "features": [
+        {
+          "id": "I1",
+          "title": "Image List View",
+          "description": "List all local Docker images with repository, tag, ID, size, created date. Sort by name, size, or date. Filter by search text.",
+          "implementation": "New ImagesView widget using docker.images.list(). Add to tabbed interface.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/images_view.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "I2",
+          "title": "Image Pull",
+          "description": "Pull images from Docker Hub or custom registries. Show pull progress with layers. Docker Desktop has a search + pull UI.",
+          "implementation": "PullDialog with registry input, image name, tag selection. Use docker.images.pull() with progress callback.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/pull_dialog.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "I3",
+          "title": "Image Remove",
+          "description": "Remove images with dependency check. Show which containers are using an image before removal.",
+          "implementation": "Confirm dialog showing dependent containers. Use docker.images.remove() with force option.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "I4",
+          "title": "Image History",
+          "description": "Show image layer history (docker image history). Useful for understanding image composition and size per layer.",
+          "implementation": "New dialog showing layers from docker.images.get(img).history().",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/image_history_dialog.py (NEW)"
+          ]
+        },
+        {
+          "id": "I5",
+          "title": "Image Build",
+          "description": "Build images from Dockerfile with context path selection. Show build progress output. Podman Desktop and Docker Desktop both support this.",
+          "implementation": "BuildDialog with Dockerfile path, build context, build args. Use docker.images.build() with stream output.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/build_dialog.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        }
+      ]
+    },
+    "category_3_volume_management": {
+      "priority": "MEDIUM",
+      "title": "Volume Management",
+      "description": "Manage Docker volumes: list, inspect, remove, create. OrbStack provides volume file access, Docker Desktop shows volumes in dashboard.",
+      "current_gap": "dockym only has prune functionality for volumes. No listing, inspection, or creation.",
+      "inspiration": {
+        "docker_desktop": "Volume list with size, mount point, created date. Volume details showing which containers use each volume.",
+        "orbstack": "Volume file access (browse volume contents).",
+        "podman_desktop": "View allocated storage.",
+        "rancher_desktop": "Basic volume management."
+      },
+      "features": [
+        {
+          "id": "V1",
+          "title": "Volume List View",
+          "description": "List all Docker volumes with name, driver, mount point, created date. Show which containers are using each volume.",
+          "implementation": "New VolumesView widget using docker.volumes.list(). Cross-reference with containers.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/volumes_view.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "V2",
+          "title": "Volume Inspect",
+          "description": "Show full volume inspect JSON with formatted view. Display labels, options, scope, and mount details.",
+          "implementation": "Dialog using docker.volumes.get(name).attrs.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/volume_inspect_dialog.py (NEW)"
+          ]
+        },
+        {
+          "id": "V3",
+          "title": "Volume Create",
+          "description": "Create new volumes with name, driver, and labels. Docker Desktop allows creating named volumes from the UI.",
+          "implementation": "Simple creation dialog with name input and driver selection.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/volume_create_dialog.py (NEW)"
+          ]
+        },
+        {
+          "id": "V4",
+          "title": "Volume Remove",
+          "description": "Remove unused volumes with confirmation. Show which containers are using the volume before removal.",
+          "implementation": "Confirm dialog with dependency check. Use docker.volumes.get(name).remove(force=True).",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/engine/client.py"
+          ]
+        }
+      ]
+    },
+    "category_4_network_management": {
+      "priority": "MEDIUM",
+      "title": "Network Management",
+      "description": "View and manage Docker networks. Show network topology, connected containers, and subnet configuration.",
+      "current_gap": "dockym only prunes networks. No viewing, inspection, or creation.",
+      "inspiration": {
+        "docker_desktop": "Network visualization showing connected containers. Network details with subnet, gateway, IP range.",
+        "orbstack": "Domain names for containers, IPv6 support, DNS integration, VPN compatibility.",
+        "podman_desktop": "Network management with container connections.",
+        "rancher_desktop": "Kubernetes network policies."
+      },
+      "features": [
+        {
+          "id": "N1",
+          "title": "Network List View",
+          "description": "List all Docker networks with name, driver, subnet, gateway, connected container count. Show bridge/host/none special networks.",
+          "implementation": "New NetworksView widget using docker.networks.list().",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/networks_view.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "N2",
+          "title": "Network Inspect",
+          "description": "Show network inspect JSON with formatted view. Display IPAM config, containers connected, options.",
+          "implementation": "Dialog using docker.networks.get(name).attrs.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/network_inspect_dialog.py (NEW)"
+          ]
+        },
+        {
+          "id": "N3",
+          "title": "Network Topology Visualization",
+          "description": "Simple graph showing networks and connected containers. OrbStack and Docker Desktop show network relationships visually.",
+          "implementation": "New widget using QGraphicsScene with nodes (containers) and edges (networks). Keep it simple - no need for complex graph libraries.",
+          "estimated_effort": "HIGH",
+          "files_affected": [
+            "src/dockym/ui/network_topology.py (NEW)"
+          ]
+        }
+      ]
+    },
+    "category_5_resource_monitoring": {
+      "priority": "HIGH",
+      "title": "Resource Monitoring Dashboard",
+      "description": "Real-time CPU, memory, disk, and network usage for containers and the Docker host. Docker Desktop shows resource usage graphs.",
+      "current_gap": "container_stats() exists in client.py but is NOT used anywhere in the UI. The function returns raw stats data but nothing displays it.",
+      "inspiration": {
+        "docker_desktop": "CPU, memory, disk usage graphs per container. Resource limits configuration.",
+        "orbstack": "Low CPU usage display, memory on demand, dynamic memory.",
+        "podman_desktop": "View allocated memory, CPU and storage for Podman machines.",
+        "rancher_desktop": "Resource management settings."
+      },
+      "features": [
+        {
+          "id": "R1",
+          "title": "Container Stats Panel",
+          "description": "Show real-time CPU%, memory usage, network I/O, and block I/O for selected container. Update every 2-5 seconds.",
+          "implementation": "New StatsWidget using container_stats() from client.py. Parse CPU percentage and memory usage from the stats response. Add to ActionPanel or as a new tab.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/stats_widget.py (NEW)",
+            "src/dockym/engine/client.py",
+            "src/dockym/ui/action_panel.py"
+          ]
+        },
+        {
+          "id": "R2",
+          "title": "System Info Dashboard",
+          "description": "Show Docker system info: total containers, images, volumes, disk usage, Docker version, storage driver, kernel version. Docker Desktop shows this on the home screen.",
+          "implementation": "New SystemInfoWidget using docker.info() and docker.disk_usage(). Display in header or a dedicated panel.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/system_info.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "R3",
+          "title": "Disk Usage Overview",
+          "description": "Show disk usage breakdown: images, containers, volumes, build cache. Docker Desktop shows this in the prune dialog area.",
+          "implementation": "Enhance PruneDialog or create new DiskUsageWidget using client.disk_usage(). Show before/after prune.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/disk_usage_widget.py (NEW)",
+            "src/dockym/engine/client.py"
+          ]
+        }
+      ]
+    },
+    "category_6_quick_actions": {
+      "priority": "MEDIUM",
+      "title": "Quick Actions & Batch Operations",
+      "description": "Perform batch operations on multiple containers/projects at once. Docker Desktop allows starting/stopping all containers.",
+      "current_gap": "dockym only operates on one service at a time. No batch operations.",
+      "inspiration": {
+        "docker_desktop": "Start/stop all containers. Remove all stopped containers.",
+        "orbstack": "Quick actions from menu bar.",
+        "podman_desktop": "Start/stop Podman machines from tray.",
+        "rancher_desktop": "Bulk operations on Kubernetes resources."
+      },
+      "features": [
+        {
+          "id": "Q1",
+          "title": "Start/Stop All Project Services",
+          "description": "Start or stop all services in a project at once. Right-click on project node to access these actions.",
+          "implementation": "Add project-level context menu in ServiceTree. Use project_up/project_down from compose.py (already exists in DockerPool).",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/service_table.py",
+            "src/dockym/ui/main_window.py"
+          ]
+        },
+        {
+          "id": "Q2",
+          "title": "Prune Enhancements",
+          "description": "Show disk usage before pruning. Allow selective pruning by label, dangling images only, etc. Show space reclaimed after prune.",
+          "implementation": "Enhance PruneDialog with disk_usage() preview and post-prune summary.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/prune_dialog.py",
+            "src/dockym/engine/client.py"
+          ]
+        },
+        {
+          "id": "Q3",
+          "title": "Bulk Container Actions",
+          "description": "Select multiple containers and perform actions: start all, stop all, remove stopped. Inspired by Docker Desktop's multi-select.",
+          "implementation": "Add checkbox selection to ContainersView. Batch action toolbar.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/containers_view.py (NEW)"
+          ]
+        }
+      ]
+    },
+    "category_7_search_and_filter": {
+      "priority": "LOW",
+      "title": "Global Search & Filter",
+      "description": "Search across all resources: containers, images, volumes, networks. Filter by status, project, image, etc.",
+      "current_gap": "dockym has a search bar but only filters services in the tree. No cross-resource search.",
+      "inspiration": {
+        "docker_desktop": "Search containers, images. Filter by status.",
+        "orbstack": "Quick search across all resources.",
+        "podman_desktop": "Search containers, images.",
+        "rancher_desktop": "Resource filtering."
+      },
+      "features": [
+        {
+          "id": "S1",
+          "title": "Enhanced Service Search",
+          "description": "Improve existing search to also match container names, image names, ports, and project paths. Add status filter dropdown (running/stopped/all).",
+          "implementation": "Extend ServiceTree.set_filter() to match additional fields. Add filter dropdown above search bar.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/service_table.py"
+          ]
+        },
+        {
+          "id": "S2",
+          "title": "Quick Switcher (Ctrl+P)",
+          "description": "Command palette style quick switcher to jump to any container, image, or project. Inspired by VS Code's Ctrl+P.",
+          "implementation": "New QuickSwitcherDialog with fuzzy search. Show results as you type.",
+          "estimated_effort": "MEDIUM",
+          "files_affected": [
+            "src/dockym/ui/quick_switcher.py (NEW)"
+          ]
+        }
+      ]
+    },
+    "category_8_notifications": {
+      "priority": "LOW",
+      "title": "Enhanced Notifications",
+      "description": "Better notification system for container state changes. Docker Desktop and OrbStack both provide rich notifications.",
+      "current_gap": "dockym has basic tray notifications on operation completion. Docker events trigger status bar updates but no rich notifications.",
+      "inspiration": {
+        "docker_desktop": "Notifications for container crashes, image pull completion, build completion.",
+        "orbstack": "Containers in menu bar, notifications from Linux.",
+        "podman_desktop": "Quickly check activity status from tray.",
+        "rancher_desktop": "Activity status in tray."
+      },
+      "features": [
+        {
+          "id": "N1",
+          "title": "Container State Change Notifications",
+          "description": "Show tray notification when a container changes state (start, stop, die, OOM). Already have DockerEventsWorker but only updates status bar.",
+          "implementation": "Extend _on_docker_event() in MainWindow to show tray notification with container name and action.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/main_window.py",
+            "src/dockym/ui/tray_manager.py"
+          ]
+        },
+        {
+          "id": "N2",
+          "title": "Notification Preferences",
+          "description": "Allow user to configure which events trigger notifications. Disable notifications for specific event types.",
+          "implementation": "Add notification settings to Config and SettingsDialog.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/models/config.py",
+            "src/dockym/ui/settings_dialog.py"
+          ]
+        },
+        {
+          "id": "N3",
+          "title": "Tray Menu Enhancements",
+          "description": "Show quick-access actions in tray context menu: show running containers count, start/stop all, quick prune. OrbStack shows containers in menu bar.",
+          "implementation": "Enhance TrayManager._setup_menu() with dynamic items showing container counts and quick actions.",
+          "estimated_effort": "LOW",
+          "files_affected": [
+            "src/dockym/ui/tray_manager.py"
+          ]
+        }
+      ]
+    }
+  },
+  "ui_architecture_proposal": {
+    "current": "Single tab with service tree + action panel. Projects shown in tree, services as children.",
+    "proposed": "Tabbed interface with multiple views:",
+    "tabs": [
+      {
+        "name": "Projects",
+        "description": "Current service tree view (compose projects). Keep existing functionality."
+      },
+      {
+        "name": "Containers",
+        "description": "All Docker containers view. List with full lifecycle actions."
+      },
+      {
+        "name": "Images",
+        "description": "Docker images list. Pull, build, remove, inspect."
+      },
+      {
+        "name": "Volumes",
+        "description": "Docker volumes list. Create, inspect, remove."
+      },
+      {
+        "name": "Networks",
+        "description": "Docker networks list. Inspect, topology view."
+      }
+    ],
+    "implementation_notes": [
+      "Use QTabWidget in MainWindow._setup_ui() to house the different views",
+      "Each tab is an independent QWidget with its own data model",
+      "Tab bar should show resource counts (e.g., 'Containers (12)', 'Images (45)')",
+      "Keep the existing ActionPanel but make it context-aware based on active tab",
+      "System tray should reflect the active tab's resource counts"
+    ]
+  },
+  "implementation_roadmap": {
+    "phase_1_quick_wins": {
+      "timeline": "1-2 weeks",
+      "features": ["N1_notifications", "N3_tray_enhancements", "Q1_batch_project", "S1_enhanced_search", "I3_image_remove", "V4_volume_remove", "C2_lifecycle_actions"],
+      "description": "Enhance existing features with minimal new UI. Mostly backend additions to client.py and minor UI tweaks."
+    },
+    "phase_2_core_views": {
+      "timeline": "2-3 weeks",
+      "features": ["C1_all_containers_view", "I1_image_list", "V1_volume_list", "N1_network_list", "R1_container_stats"],
+      "description": "Build the tabbed interface with new views. This is the biggest architectural change."
+    },
+    "phase_3_advanced": {
+      "timeline": "2-3 weeks",
+      "features": ["C3_container_inspect", "I2_image_pull", "I4_image_history", "I5_image_build", "V2_volume_inspect", "V3_volume_create", "N2_network_inspect", "R2_system_info", "R3_disk_usage"],
+      "description": "Add detailed dialogs for inspect, pull, build operations."
+    },
+    "phase_4_polish": {
+      "timeline": "1-2 weeks",
+      "features": ["C4_interactive_terminal", "C5_container_top", "N3_network_topology", "Q2_prune_enhancements", "Q3_bulk_actions", "S2_quick_switcher", "N2_notification_preferences"],
+      "description": "Advanced features: terminal emulator, topology visualization, quick switcher."
+    }
+  },
+  "technical_considerations": {
+    "docker_sdk_usage": "dockym already uses docker SDK (python docker package) for client connection, container listing, and stats. New features should use the same SDK for consistency.",
+    "threading": "All Docker API calls should run in QThreadPool via DockerPool worker pattern (already established in docker_worker.py). Never block the UI thread.",
+    "error_handling": "All new client.py methods should follow existing pattern: catch DockerException, APIError, NotFound and return None or empty dict.",
+    "i18n": "dockym uses Spanish UI labels. New features should follow the same pattern (e.g., 'Imágenes', 'Volúmenes', 'Redes').",
+    "tabbed_ui": "Consider using QTabWidget with custom tab bar styling to match the existing dark theme. Each tab should have its own search/filter bar.",
+    "data_refresh": "Each view should have its own refresh timer. Global refresh (F5) should refresh all tabs. DockerEventsWorker should notify all tabs of state changes."
+  }
+}
