@@ -183,7 +183,7 @@ class SearchItemDelegate(QStyledItemDelegate):
         painter.restore()
 
     def sizeHint(self, option, index):
-        return option.rect.size().adjusted(0, 6, 0, 6)
+        return option.rect.adjusted(0, 6, 0, 6).size()
 
 
 class CommandPalette(QDialog):
